@@ -27,7 +27,7 @@ class CoffeeOrderStack(Stack):
             layer_version_arn=f"arn:aws:lambda:{Aws.REGION}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:5",
         )
         # Step 2: Create a Lambda function
-        grocery_function = aws_lambda.Function(self, "MyImageProcessor",
+        grocery_function = aws_lambda.Function(self, "TriggerStepFunctionsWorkflow",
                                                runtime=aws_lambda.Runtime.PYTHON_3_11,
                                                timeout=Duration.seconds(30),
                                                memory_size=2048,
@@ -38,7 +38,6 @@ class CoffeeOrderStack(Stack):
                                             versioned=False,
                                             encryption=aws_s3.BucketEncryption.S3_MANAGED,
                                             block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL)
-        bucket_name = grocery_list_bucket.bucket_name
 
         # Step 3: Grant the Lambda function permissions to read from the S3 bucket
         grocery_list_bucket.grant_read_write(grocery_function)
@@ -47,7 +46,6 @@ class CoffeeOrderStack(Stack):
         # Step 4: Grant the Lambda function permissions to use Textract
         textract_policy = iam.PolicyStatement(
             actions=[
-                "s3:GetObject",
                 "textract:DetectDocumentText",
                      "textract:StartDocumentTextDetection",
                      "textract:GetDocumentTextDetection"],
@@ -59,11 +57,11 @@ class CoffeeOrderStack(Stack):
         grocery_list_bucket.add_event_notification(aws_s3.EventType.OBJECT_CREATED, notification)
 
         # Step 5: Create a Dead-Letter Queue (DLQ) for the SQS queue
-        dlq = sqs.Queue(self, "MyDLQ",
+        dlq = sqs.Queue(self, "GroceryListDLQ",
                         retention_period=Duration.days(14))  # Retain messages for 14 days
 
         # Step 6: Create the main SQS queue with a DLQ
-        sqs_queue = sqs.Queue(self, "MyTextExtractionQueue",
+        sqs_queue = sqs.Queue(self, "GroceryListTextExtractionQueue",
                               dead_letter_queue=sqs.DeadLetterQueue(
                                   max_receive_count=3,  # Retry 3 times before sending to DLQ
                                   queue=dlq

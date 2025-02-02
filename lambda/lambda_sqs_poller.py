@@ -1,26 +1,33 @@
 import json
 import boto3
 import os
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.utilities.data_classes import event_source, SQSEvent
 
-def handler(event, context):
+sqs_client = boto3.client('sqs')
+bedrock_client = boto3.client('bedrock-runtime')
+
+# Get the SQS queue URL and Bedrock inference profile ARN from environment variables
+sqs_queue_url = os.environ["SQS_QUEUE_URL"]
+logger = Logger()
+
+
+@event_source(data_class=SQSEvent)
+@logger.inject_lambda_context(log_event=True)
+def handler(event: SQSEvent, context):
     # Log the event for debugging
-    print("Received event: " + json.dumps(event))
+    logger.info(f"Received event:  {json.dumps(event)}")
 
-    # Initialize SQS and Bedrock clients
-    sqs_client = boto3.client('sqs')
-    bedrock_client = boto3.client('bedrock-runtime')
+    for record in event.records:
+        logger.info(f"Received event: {record}")
+        event_body = json.loads(record.body)
+        logger.info(f"Received event body: {event_body}")
 
-    # Get the SQS queue URL and Bedrock inference profile ARN from environment variables
-    sqs_queue_url = os.environ["SQS_QUEUE_URL"]
-
-
-    # Process each message in the event
-    for record in event['Records']:
-        message_body = json.loads(record['body'])
-        print("Processing message:", message_body)
+        message_body = json.loads(record.body)
+        logger.info("Processing message:", message_body)
 
         # Extract the text from the message
-        extracted_text = message_body['text']
+        extracted_text = message_body.get('text')
 
         # Use the Bedrock foundation model to manipulate the text
         # Use the Bedrock foundation model to extract a grocery list
@@ -50,7 +57,7 @@ def handler(event, context):
                 "anthropic_version": "bedrock-2023-05-31"  # Required for Claude 3 models
             })
         )
- # Parse the response from Bedrock
+        # Parse the response from Bedrock
         response_body = json.loads(response['body'].read())
         manipulated_text = response_body['content'][0]['text']  # Extract the generated text
 
