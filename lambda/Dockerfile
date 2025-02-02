@@ -1,5 +1,5 @@
 # Use the AWS Lambda Python 3.13 base image
-FROM public.ecr.aws/lambda/python:3.13
+FROM public.ecr.aws/lambda/python:3.11
 
 # Example: Copy requirements.txt and install packages
 COPY requirements.txt .

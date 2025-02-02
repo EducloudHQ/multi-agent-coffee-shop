@@ -1,6 +1,10 @@
 aws-lambda-powertools[tracer]
 aws-cdk.aws-codestar-alpha==2.175.1a0
 pydantic[email]==2.10.5
+stripe-agent-toolkit==0.2.0
+langchain==0.3.7
+stripe==11.0.0
+langgraph==0.2.67
 aws-cdk.aws-lambda-python-alpha==2.175.1a0
 cdklabs.generative-ai-cdk-constructs==0.1.289
 

@@ -1,4 +1,6 @@
 aws-cdk-lib==2.175.1
 constructs>=10.0.0,<11.0.0
-
+langchain==0.3.4
+stripe==11.0.0
+stripe-agent-toolkit==0.2.0
 
