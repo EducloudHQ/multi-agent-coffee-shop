@@ -1,7 +1,12 @@
+import json
 import os
 from time import time
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import datetime
+import boto3
 import stripe
-from pydantic import EmailStr
+from pydantic import EmailStr, ValidationError, BaseModel, HttpUrl
 from typing_extensions import Annotated
 from stripe_agent_toolkit.langchain.toolkit import StripeAgentToolkit
 from aws_lambda_powertools import Logger, Tracer
@@ -12,9 +17,37 @@ from aws_lambda_powertools.event_handler.openapi.params import Body, Query
 tracer = Tracer()
 logger = Logger()
 app = BedrockAgentResolver()
+dynamodb = boto3.resource("dynamodb")
+# table_name = os.environ.get("ECOMMERCE_TABLE_NAME")
+table_name = "asdasd"
 
+table = dynamodb.Table(table_name)
 # Set your Stripe API key
 stripe.api_key = 'sk_test_o5XBQtVklHa7okPAhm5Ey61C00T7DHjBgB'
+
+from datetime import datetime
+from typing import List
+
+
+class Package(BaseModel):
+    height: int
+    length: int
+    weight: int
+    width: int
+
+
+class Product(BaseModel):
+    productId: str
+    category: str
+    createdDate: datetime
+    description: str
+    modifiedDate: datetime
+    name: str
+    package: Package
+    pictures: List[HttpUrl]
+    price: int
+    tags: List[str]
+
 
 '''
 @app.get("/schedule_meeting", description="Schedules a meeting with the team")
@@ -25,6 +58,123 @@ def schedule_meeting(
     logger.info("Scheduling a meeting", email=email)
     return True
 '''
+
+
+@app.post("/list_of_items", description="receives a list of items and prints them out")
+@tracer.capture_method
+def list_of_items(list_items: Annotated[
+    list, Body(examples=[{
+        "PK": "PRODUCT",
+        "SK": "PRODUCT#4c1fadaa-213a-4ea8-aa32-58c217604e3c",
+        "productId": "4c1fadaa-213a-4ea8-aa32-58c217604e3c",
+        "category": "fruit",
+        "createdDate": "2017-04-17T01:14:03 -02:00",
+        "description": "Culpa non veniam deserunt dolor irure elit cupidatat culpa consequat nulla irure aliqua.",
+        "modifiedDate": "2019-03-13T12:18:27 -01:00",
+        "name": "Fresh Lemons",
+        "package": {
+            "height": 948,
+            "length": 455,
+            "weight": 54,
+            "width": 905
+        },
+        "pictures": [
+            "https://img.freepik.com/free-photo/lemon_1205-1667.jpg?w=1480&t=st=1689112951~exp=1689113551~hmac=196483001817bd24a3d1eeb35a23ddf9911ac5628fe6df0758a47faa7ed3e332"
+        ],
+        "price": 7160,
+        "tags": [
+            "mollit",
+            "ad",
+            "eiusmod",
+            "irure",
+            "tempor"
+        ]
+    },
+    {
+        "PK": "PRODUCT",
+        "SK": "PRODUCT#d2580eff-d105-45a5-9b21-ba61995bc6da",
+        "productId": "d2580eff-d105-45a5-9b21-ba61995bc6da",
+        "category": "sweets",
+        "createdDate": "2017-04-06T06:21:36 -02:00",
+        "description": "Dolore ipsum eiusmod dolore aliquip laborum laborum aute ipsum commodo id irure duis ipsum.",
+        "modifiedDate": "2019-09-21T12:08:48 -02:00",
+        "name": "Fresh Peach",
+        "package": {
+            "height": 329,
+            "length": 179,
+            "weight": 293,
+            "width": 741
+        },
+        "pictures": [
+            "https://img.freepik.com/free-photo/peach-table_144627-17515.jpg?w=996&t=st=1689112985~exp=1689113585~hmac=ebfa8334b482aa9b07b51440b78fcd3d03d4f1e504fbd1b3d96ccf49da0d8f13"
+        ],
+        "price": 3500,
+        "tags": [
+            "laboris",
+            "dolor",
+            "in",
+            "labore",
+            "duis"
+        ]
+    },],description="list of items")]) -> Annotated[
+    list, Body(description="returns list of items")]:
+    logger.info(f"list of items {list_items}")
+    return list_items
+
+
+@app.post("/populate_db", description="Populates the database with a list of products gotten from a json file")
+@tracer.capture_method
+def add_products_db() -> Annotated[
+    bool, Body(description="Whether the products were added to the successfully")]:
+    """
+       Batch loads a list of products into DynamoDB.
+
+
+       Returns:
+           dict: A response indicating the status of the operation.
+       """
+
+    logger.append_keys(
+        session_id=app.current_event.session_id,
+        action_group=app.current_event.action_group,
+        input_text=app.current_event.input_text,
+
+    )
+    try:
+        json_file_path = os.path.join("/var/task", "product_list.json")
+        # Load and map the JSON data to List[Product]
+        with open(json_file_path, "r") as file:
+            product_list_data = json.load(file)
+        logger.info("product list ", product_list=product_list_data)
+        # Validate the input using Pydantic
+        product_list: List[Product] = [Product(**item) for item in product_list_data]
+
+    except ValidationError as e:
+        logger.exception("An unexpected error occurred", log=e)
+        return False
+
+    # Batch load products into DynamoDB
+    with table.batch_writer() as batch:
+        for product in product_list:
+            batch.put_item(
+                Item={
+                    "PK": "PRODUCT",
+                    "SK": f"PRODUCT#{product.productId}",
+                    "productId": product.productId,
+                    "category": product.category,
+                    "createdDate": product.createdDate,
+                    "description": product.description,
+                    "modifiedDate": product.modifiedDate,
+                    "name": product.name,
+                    "package": product.package,
+                    "pictures": product.pictures,
+                    "price": product.price,
+                    "tags": product.tags,
+                }
+            )
+
+    logger.info("Products uploaded successfully")
+    return True
 
 
 @app.get("/payment_link", description="Creates a stripe payment link")
@@ -91,8 +241,9 @@ def current_time() -> int:
 def lambda_handler(event: dict, context: LambdaContext):
     return app.resolve(event, context)
 
-'''
+
+
 if __name__ == "__main__":
     print(app.get_openapi_json_schema())
 
-'''
+

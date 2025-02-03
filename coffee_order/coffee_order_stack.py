@@ -3,10 +3,10 @@ from aws_cdk import (
 )
 
 from aws_cdk import (aws_lambda, aws_s3, aws_s3_notifications, aws_iam as iam,aws_lambda_event_sources as lambda_event_sources,
-                     aws_sns as sns, aws_sqs as sqs, aws_sns_subscriptions as sns_subscriptions, )
+                     aws_sns as sns, aws_sqs as sqs, aws_dynamodb as dynamodb )
 
 from aws_cdk.aws_lambda import DockerImageCode
-from aws_cdk.aws_lambda_python_alpha import PythonFunction, BundlingOptions
+
 from cdklabs.generative_ai_cdk_constructs.bedrock import (
     ActionGroupExecutor,
     Agent,
@@ -25,6 +25,50 @@ class CoffeeOrderStack(Stack):
             self,
             id="lambda-powertools",
             layer_version_arn=f"arn:aws:lambda:{Aws.REGION}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:5",
+        )
+
+        # Define the DynamoDB table
+        ecommerce_table = dynamodb.Table(
+            self, "GroceryAppTable",
+            table_name="GroceryAppTable",
+            partition_key=dynamodb.Attribute(
+                name="PK",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="SK",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            stream=dynamodb.StreamViewType.NEW_IMAGE,
+
+        )
+
+        # Add Global Secondary Indexes (GSIs)
+        ecommerce_table.add_global_secondary_index(
+            index_name="userOrders",
+            partition_key=dynamodb.Attribute(
+                name="GSI1PK",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="GSI1SK",
+                type=dynamodb.AttributeType.STRING
+            ),
+            projection_type=dynamodb.ProjectionType.ALL
+        )
+
+        ecommerce_table.add_global_secondary_index(
+            index_name="orderProducts",
+            partition_key=dynamodb.Attribute(
+                name="GSI2PK",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="GSI2SK",
+                type=dynamodb.AttributeType.STRING
+            ),
+            projection_type=dynamodb.ProjectionType.ALL
         )
         # Step 2: Create a Lambda function
         grocery_function = aws_lambda.Function(self, "TriggerStepFunctionsWorkflow",
@@ -111,13 +155,15 @@ class CoffeeOrderStack(Stack):
             code=DockerImageCode.from_image_asset("lambda"),
 
         )
+        ecommerce_table.grant_full_access(action_group_function)
+        action_group_function.add_environment("ECOMMERCE_TABLE_NAME",ecommerce_table.table_name)
 
         agent = Agent(
             self,
             "Agent",
             foundation_model=BedrockFoundationModel.ANTHROPIC_CLAUDE_3_5_SONNET_V1_0,
             instruction="You are a helpful and friendly agent that helps users tell the current time, create stripe "
-                        "payment links and schedules meetings",
+                        "payment links,batch uploads a list of products into a dynamodb table and schedules meetings",
         )
 
         executor_group = ActionGroupExecutor(lambda_=action_group_function)

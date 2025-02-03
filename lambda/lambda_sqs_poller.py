@@ -31,7 +31,7 @@ def handler(event: SQSEvent, context):
 
         # Use the Bedrock foundation model to manipulate the text
         # Use the Bedrock foundation model to extract a grocery list
-        prompt = f"""You are a helpful assistant that extracts grocery items alongside their amount in kg and count if available, from text. 
+        prompt = f"""You are a helpful assistant that extracts grocery items alongside their amount in kg and quantity if available, from text. 
         If the text contains a grocery list, respond with ONLY the list of items alongside their amount in kg and count if available in the following format:
         - Item 1, kg, count
         - Item 2,kg, count
