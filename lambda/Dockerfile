@@ -1,7 +1,6 @@
 # Use the AWS Lambda Python 3.13 base image
 FROM public.ecr.aws/lambda/python:3.11
 
-COPY products_list.json .
 # Example: Copy requirements.txt and install packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt --target "/opt/python"

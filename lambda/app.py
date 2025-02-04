@@ -1,14 +1,11 @@
-import json
+
 import os
 from time import time
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from datetime import datetime
+
 import boto3
 import stripe
 from pydantic import EmailStr, ValidationError, BaseModel, HttpUrl
 from typing_extensions import Annotated
-from stripe_agent_toolkit.langchain.toolkit import StripeAgentToolkit
 from aws_lambda_powertools import Logger, Tracer
 from aws_lambda_powertools.event_handler import BedrockAgentResolver
 from aws_lambda_powertools.utilities.typing import LambdaContext
@@ -18,8 +15,8 @@ tracer = Tracer()
 logger = Logger()
 app = BedrockAgentResolver()
 dynamodb = boto3.resource("dynamodb")
-# table_name = os.environ.get("ECOMMERCE_TABLE_NAME")
-table_name = "asdasd"
+
+table_name = os.environ.get("ECOMMERCE_TABLE_NAME")
 
 table = dynamodb.Table(table_name)
 # Set your Stripe API key
@@ -60,10 +57,11 @@ def schedule_meeting(
 '''
 
 
-@app.post("/list_of_items", description="receives a list of items and prints them out")
+@app.post("/list_of_items", description="receives a json array made up of json objects, maps each object to "
+                                        "a pydantic model called Product and returns the json array")
 @tracer.capture_method
 def list_of_items(list_items: Annotated[
-    list, Body(examples=[{
+    list, Query(examples=[{
         "PK": "PRODUCT",
         "SK": "PRODUCT#4c1fadaa-213a-4ea8-aa32-58c217604e3c",
         "productId": "4c1fadaa-213a-4ea8-aa32-58c217604e3c",
@@ -89,42 +87,45 @@ def list_of_items(list_items: Annotated[
             "irure",
             "tempor"
         ]
-    },
-    {
-        "PK": "PRODUCT",
-        "SK": "PRODUCT#d2580eff-d105-45a5-9b21-ba61995bc6da",
-        "productId": "d2580eff-d105-45a5-9b21-ba61995bc6da",
-        "category": "sweets",
-        "createdDate": "2017-04-06T06:21:36 -02:00",
-        "description": "Dolore ipsum eiusmod dolore aliquip laborum laborum aute ipsum commodo id irure duis ipsum.",
-        "modifiedDate": "2019-09-21T12:08:48 -02:00",
-        "name": "Fresh Peach",
-        "package": {
-            "height": 329,
-            "length": 179,
-            "weight": 293,
-            "width": 741
-        },
-        "pictures": [
-            "https://img.freepik.com/free-photo/peach-table_144627-17515.jpg?w=996&t=st=1689112985~exp=1689113585~hmac=ebfa8334b482aa9b07b51440b78fcd3d03d4f1e504fbd1b3d96ccf49da0d8f13"
-        ],
-        "price": 3500,
-        "tags": [
-            "laboris",
-            "dolor",
-            "in",
-            "labore",
-            "duis"
-        ]
-    },],description="list of items")]) -> Annotated[
+    }
+    ], description="A list of items")]) -> Annotated[
     list, Body(description="returns list of items")]:
     logger.info(f"list of items {list_items}")
+
     return list_items
 
 
-@app.post("/populate_db", description="Populates the database with a list of products gotten from a json file")
+@app.post("/populate_db", description="Populates the database with a list of json objects gotten from a json array")
 @tracer.capture_method
-def add_products_db() -> Annotated[
+def add_products_db(list_items: Annotated[
+    list, Query(examples=[{
+        "PK": "PRODUCT",
+        "SK": "PRODUCT#4c1fadaa-213a-4ea8-aa32-58c217604e3c",
+        "productId": "4c1fadaa-213a-4ea8-aa32-58c217604e3c",
+        "category": "fruit",
+        "createdDate": "2017-04-17T01:14:03 -02:00",
+        "description": "Culpa non veniam deserunt dolor irure elit cupidatat culpa consequat nulla irure aliqua.",
+        "modifiedDate": "2019-03-13T12:18:27 -01:00",
+        "name": "Fresh Lemons",
+        "package": {
+            "height": 948,
+            "length": 455,
+            "weight": 54,
+            "width": 905
+        },
+        "pictures": [
+            "https://img.freepik.com/free-photo/lemon_1205-1667.jpg?w=1480&t=st=1689112951~exp=1689113551~hmac=196483001817bd24a3d1eeb35a23ddf9911ac5628fe6df0758a47faa7ed3e332"
+        ],
+        "price": 7160,
+        "tags": [
+            "mollit",
+            "ad",
+            "eiusmod",
+            "irure",
+            "tempor"
+        ]
+    }
+    ], description="The list items")]) -> Annotated[
     bool, Body(description="Whether the products were added to the successfully")]:
     """
        Batch loads a list of products into DynamoDB.
@@ -141,13 +142,11 @@ def add_products_db() -> Annotated[
 
     )
     try:
-        json_file_path = os.path.join("/var/task", "product_list.json")
-        # Load and map the JSON data to List[Product]
-        with open(json_file_path, "r") as file:
-            product_list_data = json.load(file)
-        logger.info("product list ", product_list=product_list_data)
+
+        logger.info(f"list of items {list_items}")
+
         # Validate the input using Pydantic
-        product_list: List[Product] = [Product(**item) for item in product_list_data]
+        product_list: List[Product] = [Product(**item) for item in list_items]
 
     except ValidationError as e:
         logger.exception("An unexpected error occurred", log=e)
@@ -242,8 +241,5 @@ def lambda_handler(event: dict, context: LambdaContext):
     return app.resolve(event, context)
 
 
-
 if __name__ == "__main__":
     print(app.get_openapi_json_schema())
-
-

@@ -1,9 +1,11 @@
+
 from aws_cdk import (
-    Stack, Aws, Duration,
+    Stack, Aws, Duration, CfnOutput,
 )
 
 from aws_cdk import (aws_lambda, aws_s3, aws_s3_notifications, aws_iam as iam,aws_lambda_event_sources as lambda_event_sources,
-                     aws_sns as sns, aws_sqs as sqs, aws_dynamodb as dynamodb )
+                     aws_appsync as appsync, aws_sqs as sqs, aws_dynamodb as dynamodb )
+from aws_cdk.aws_appsync import SchemaFile
 
 from aws_cdk.aws_lambda import DockerImageCode
 
@@ -44,6 +46,74 @@ class CoffeeOrderStack(Stack):
 
         )
 
+
+        # AppSync API
+        api = appsync.GraphqlApi(
+            self, "GroceryAgentApi",
+            name="grocery-agents-api",
+            definition=appsync.Definition.from_schema(
+                appsync.SchemaFile.from_asset("graphql/schema.graphql"),
+
+            ),
+            log_config=appsync.LogConfig(
+                field_log_level=appsync.FieldLogLevel.ALL
+            ),
+
+
+            authorization_config=appsync.AuthorizationConfig(
+                default_authorization=appsync.AuthorizationMode(
+                    authorization_type=appsync.AuthorizationType.API_KEY
+                )
+            )
+        )
+
+        # Lambda Function for Resolver
+        lambda_function = aws_lambda.Function(
+            self, "UploadProductsLambda",
+            runtime=aws_lambda.Runtime.PYTHON_3_11,
+            timeout=Duration.seconds(30),
+            memory_size=2048,
+            handler="batch_upload_products.handler",
+            code=aws_lambda.Code.from_asset("batch_upload")
+        )
+        # Lambda Function for Resolver
+        create_stripe_products_lambda_function = aws_lambda.Function(
+            self, "CreateStripeProductsLambda",
+            runtime=aws_lambda.Runtime.PYTHON_3_11,
+            timeout=Duration.seconds(30),
+            memory_size=2048,
+            handler="create_stripe_products.handler",
+            code=aws_lambda.Code.from_asset("batch_upload")
+        )
+
+        # Grant Lambda access to DynamoDB
+        ecommerce_table.grant_write_data(lambda_function)
+        lambda_function.add_environment("ECOMMERCE_TABLE_NAME", ecommerce_table.table_name)
+        # Add Lambda as a DataSource for AppSync
+        lambda_ds = api.add_lambda_data_source("LambdaDataSource", lambda_function)
+
+        # Define the Resolver for the uploadProducts Mutation
+        lambda_ds.create_resolver(
+            id="uploadProductsResolver",
+            type_name="Mutation",
+            field_name="uploadProducts",
+            request_mapping_template=appsync.MappingTemplate.lambda_request(),
+            response_mapping_template=appsync.MappingTemplate.lambda_result()
+        )
+        # Add Lambda as a DataSource for AppSync
+        create_stripe_products_lambda_ds = api.add_lambda_data_source("CreateStripeProductsLambdaDataSource", create_stripe_products_lambda_function)
+
+        # Define the Resolver for the uploadProducts Mutation
+        create_stripe_products_lambda_ds.create_resolver(
+            id="CreateStripeProductsResolver",
+            type_name="Mutation",
+            field_name="createStripeProducts",
+            request_mapping_template=appsync.MappingTemplate.lambda_request(),
+            response_mapping_template=appsync.MappingTemplate.lambda_result()
+        )
+
+
+
         # Add Global Secondary Indexes (GSIs)
         ecommerce_table.add_global_secondary_index(
             index_name="userOrders",
@@ -70,6 +140,7 @@ class CoffeeOrderStack(Stack):
             ),
             projection_type=dynamodb.ProjectionType.ALL
         )
+
         # Step 2: Create a Lambda function
         grocery_function = aws_lambda.Function(self, "TriggerStepFunctionsWorkflow",
                                                runtime=aws_lambda.Runtime.PYTHON_3_11,
@@ -178,3 +249,14 @@ class CoffeeOrderStack(Stack):
             api_schema=ApiSchema.from_asset("./lambda/openapi.json"),
         )
         agent.add_action_group(action_group)
+        # Output the AppSync GraphQL Endpoint
+        CfnOutput(
+            self, "GraphQLEndpoint",
+            value=api.graphql_url
+        )
+        CfnOutput(
+            self, "GraphQLApiKey",
+            value=api.api_key
+        )
+
+

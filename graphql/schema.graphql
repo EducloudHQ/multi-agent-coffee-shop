@@ -1,0 +1,56 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+type Mutation {
+    uploadProducts: String
+    createStripeProducts:String
+}
+type Query {
+    getProduct(id:String!):Product!
+
+}
+
+
+
+type Product {
+    productId: String!
+    category: String!
+    createdDate: String!
+    description: String!
+    modifiedDate: String!
+    name: String!
+    package: Package!
+    pictures: [String!]!
+    price: Int!
+    tags: [String!]!
+}
+
+type Package {
+    height: Int!
+    length: Int!
+    weight: Int!
+    width: Int!
+}
+
+
+
+input ProductInput {
+    productId: String!
+    category: String!
+    createdDate: String!
+    description: String!
+    modifiedDate: String!
+    name: String!
+    package: PackageInput!
+    pictures: [String!]!
+    price: Int!
+    tags: [String!]!
+}
+
+input PackageInput {
+    height: Int!
+    length: Int!
+    weight: Int!
+    width: Int!
+}
